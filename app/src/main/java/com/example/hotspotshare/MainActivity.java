@@ -3,10 +3,12 @@ import android.Manifest;
 import android.app.Activity;
 import android.content.Context;
 import android.content.pm.PackageManager;
+import android.media.MediaPlayer;
 import android.net.ConnectivityManager;
 import android.net.wifi.WifiManager;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
 import android.os.Handler;
 import android.telephony.TelephonyManager;
 import android.view.View;
@@ -18,8 +20,10 @@ import android.widget.TextView;
 import androidx.annotation.RequiresApi;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 
 import java.io.BufferedReader;
+import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.IOException;
@@ -28,11 +32,10 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 
-public class MainActivity extends AppCompatActivity {
+public class MainActivity extends AppCompatActivity implements View.OnClickListener {
     TextView wifiDisplayView;
     TextView wifiStateView;
     Switch wifiSwitch;
-    WifiHotspotConfig wifiHotspotConfig = new WifiHotspotConfig(this);
     Button updateButton;
 
     public static int AP_STATE_DISABLING = 10;
@@ -42,12 +45,20 @@ public class MainActivity extends AppCompatActivity {
     public static int AP_STATE_FAILED = 14;
     public static String SSID;
     public static String preShareKey;
+    public boolean mobileEnableState = true;
+
+
+    private Button playButton;
+    private Button pauseButton;
+    private Button stopButton;
+
+
+    private MediaPlayer mediaPlayer = new MediaPlayer();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-
         initWifiHotspotDisplay();
         updateButton.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -58,8 +69,10 @@ public class MainActivity extends AppCompatActivity {
                 }
                 else {
                     wifiStateView.setText("HotspotState:Closed");
-                    wifiDisplayView.setText("Not Found");
+                    wifiDisplayView.setText("SSID:"+"Null"+"\n\n"+"PWD:"+"Null");
+                    wifiSwitch.setChecked(isHotSpotEnabled());
                 }
+
             }
         });
 
@@ -67,56 +80,19 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
                 if(isChecked){
-//                    wifiHotspotConfig.closeHotSpot();
                     turnOnHotspot();
+                    enableMobileData(mobileEnableState);
                     wifiStateView.setText("HotspotState:Open");
+                    wifiDisplayView.setText("SSID:"+SSID+"\n\n"+"PWD:"+preShareKey);
                 }
                 else{
+//                    closeHotSpot();
                     turnOffHotspot();
-//                    wifiHotspotConfig.closeHotSpot();
-                    wifiStateView.setText("HotspotState:Close");
+                    wifiStateView.setText("HotspotState:Closed");
+                    wifiDisplayView.setText("SSID:"+"Null"+"\n\n"+"PWD:"+"Null");
                 }
             }
         });
-    }
-
-
-    @Override
-    protected void onDestroy(){
-        super.onDestroy();
-    }
-
-    @Override
-    protected void onPause(){
-        super.onPause();
-    }
-
-    @Override
-    protected void onRestart(){
-        super.onRestart();
-    }
-
-    @Override
-    protected void onResume(){
-        super.onResume();
-//        wifiHotspotConfig.turnOnHotspot();
-    }
-
-    @Override
-    protected void onStart(){
-        super.onStart();
-    }
-
-    @Override
-    protected void onStop(){
-        super.onStop();
-    }
-
-    private void initWifiHotspotDisplay(){
-        wifiDisplayView = findViewById(R.id.wifi_display);
-        wifiStateView = findViewById(R.id.wifi_state);
-        updateButton = findViewById(R.id.wifi_update);
-        wifiSwitch = findViewById(R.id.wifi_switch);
     }
 
     public boolean isHotSpotEnabled() {
@@ -151,9 +127,6 @@ public class MainActivity extends AppCompatActivity {
     private static boolean isHotspotEnabledState = false;
 
     /**
-     * description:turnOnHotspot() just start the hotspot
-     * and can not setup the SSID and Password
-     *
      * @param
      * @param
      * @return
@@ -261,6 +234,7 @@ public class MainActivity extends AppCompatActivity {
         return false;
     }
 
+
     public void closeHotSpot(){
         ConnectivityManager connManager = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
         Field iConnMgrField;
@@ -276,4 +250,74 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    private static String[] PERMISSIONS_STORAGE = {
+            Manifest.permission.READ_EXTERNAL_STORAGE,
+            Manifest.permission.WRITE_EXTERNAL_STORAGE};
+
+    private void initWifiHotspotDisplay(){
+        wifiDisplayView = findViewById(R.id.wifi_display);
+        wifiStateView = findViewById(R.id.wifi_state);
+        updateButton = findViewById(R.id.wifi_update);
+        wifiSwitch = findViewById(R.id.wifi_switch);
+
+        playButton =  findViewById(R.id.button_play);
+        pauseButton = findViewById(R.id.button_pause);
+        stopButton =  findViewById(R.id.button_stop);
+        playButton.setOnClickListener(this);
+        pauseButton.setOnClickListener(this);
+        stopButton.setOnClickListener(this);
+
+        //权限动态申请
+        if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, PERMISSIONS_STORAGE, 1);
+
+        } else {
+//            initSD();
+            initMediaPlayer();
+        }
+
+    }
+
+    private void initMediaPlayer() {
+        try {
+            File file = new File(Environment.getExternalStorageDirectory(),
+                    "huawei-8211-dream-it-possible.mp3");
+            mediaPlayer.setDataSource(file.getPath()); // 指定音频文件的路径
+            mediaPlayer.prepare(); // 让MediaPlayer进入到准备状态
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    @Override
+    public void onClick(View v) {
+        switch (v.getId()) {
+            case R.id.button_play:
+                if (!mediaPlayer.isPlaying()) {
+                    mediaPlayer.start(); // 开始播放
+                }
+                break;
+            case R.id.button_pause:
+                if (mediaPlayer.isPlaying()) {
+                    mediaPlayer.pause(); // 暂停播放
+                }
+                break;
+            case R.id.button_stop:
+                if (mediaPlayer.isPlaying()) {
+                    mediaPlayer.reset(); // 停止播放
+                    initMediaPlayer();
+                }
+                break;
+            default:
+                break;
+        }
+    }
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        if (mediaPlayer != null) {
+            mediaPlayer.stop();
+            mediaPlayer.release();
+        }
+    }
 }

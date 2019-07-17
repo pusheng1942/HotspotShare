@@ -8,6 +8,7 @@ import android.net.ConnectivityManager;
 import android.net.wifi.WifiManager;
 import android.os.Build;
 import android.os.Handler;
+import android.os.Message;
 import android.telephony.TelephonyManager;
 import android.util.Log;
 import androidx.annotation.RequiresApi;
@@ -203,6 +204,26 @@ public class WifiHotspotConfig {
             e.printStackTrace();
         }
     }
+
+//    Handler  mTimeHandler = new Handler() {
+//        public void handleMessage(Message msg) {
+//            if (msg.what == 0) {
+//                if(isHotSpotEnabled()){
+//                    wifiStateView.setText("HotspotState:Open\n");
+//                    wifiDisplayView.setText("Ssid:"+SSID+"\n"+"Pwd:"+preShareKey);
+//                    ipListAndNumDisplay();
+//                }
+//                else {
+//                    wifiStateView.setText("HotspotState:Closed\n");
+//                    wifiDisplayView.setText("Ssid:"+"null"+"\n"+"Pwd:"+"null");
+//                }
+//                wifiSwitch.setChecked(isHotSpotEnabled());
+//                sendEmptyMessageDelayed(0, 500);
+//            }
+//        }
+//    };
+//    mTimeHandler.sendEmptyMessageDelayed(0, 100);
+
 
 }
 

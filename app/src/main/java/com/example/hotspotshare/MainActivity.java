@@ -2,18 +2,25 @@ package com.example.hotspotshare;
 import android.Manifest;
 import android.app.Activity;
 import android.content.Context;
+import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.media.MediaPlayer;
 import android.net.ConnectivityManager;
+import android.net.NetworkInfo;
+import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
+import android.os.Message;
 import android.telephony.TelephonyManager;
+import android.util.Log;
 import android.view.View;
+import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.CompoundButton;
+import android.widget.ListView;
 import android.widget.Switch;
 import android.widget.TextView;
 
@@ -51,6 +58,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     private Button playButton;
     private Button pauseButton;
     private Button stopButton;
+    private TextView ipListView;
 
 
     private MediaPlayer mediaPlayer = new MediaPlayer();
@@ -60,19 +68,24 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         initWifiHotspotDisplay();
+        ipListAndNumDisplay();
+        wifiStateView.setText("HotspotState:Closed\n");
+        wifiDisplayView.setText("SSID:"+"ull"+"\n"+"PWD:"+"null");
+
         updateButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
                 if(isHotSpotEnabled()){
-                    wifiStateView.setText("HotspotState:Open");
-                    wifiDisplayView.setText("SSID:"+SSID+"\n\n"+"PWD:"+preShareKey);
+                    wifiStateView.setText("HotspotState:Open\n");
+                    wifiDisplayView.setText("Ssid:"+SSID+"\n"+"Pwd:"+preShareKey);
                 }
                 else {
-                    wifiStateView.setText("HotspotState:Closed");
-                    wifiDisplayView.setText("SSID:"+"Null"+"\n\n"+"PWD:"+"Null");
-                    wifiSwitch.setChecked(isHotSpotEnabled());
-                }
+                    wifiStateView.setText("HotspotState:Closed\n");
+                    wifiDisplayView.setText("Ssid:"+"null"+"\n"+"Pwd:"+"null");
 
+                }
+                ipListAndNumDisplay();
+                wifiSwitch.setChecked(isHotSpotEnabled());
             }
         });
 
@@ -82,14 +95,14 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                 if(isChecked){
                     turnOnHotspot();
                     enableMobileData(mobileEnableState);
-                    wifiStateView.setText("HotspotState:Open");
-                    wifiDisplayView.setText("SSID:"+SSID+"\n\n"+"PWD:"+preShareKey);
+                    wifiStateView.setText("HotspotState:Open\n");
+                    wifiDisplayView.setText("Ssid:"+SSID+"\n"+"Pwd:" +preShareKey);
+                    ipListAndNumDisplay();
                 }
                 else{
-//                    closeHotSpot();
                     turnOffHotspot();
-                    wifiStateView.setText("HotspotState:Closed");
-                    wifiDisplayView.setText("SSID:"+"Null"+"\n\n"+"PWD:"+"Null");
+                    wifiStateView.setText("HotspotState:Closed\n");
+                    wifiDisplayView.setText("Ssid:"+"null"+"\n"+"Pwd:"+"null");
                 }
             }
         });
@@ -126,11 +139,6 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     private static WifiManager.LocalOnlyHotspotReservation mReservation;
     private static boolean isHotspotEnabledState = false;
 
-    /**
-     * @param
-     * @param
-     * @return
-     */
     @RequiresApi(api = Build.VERSION_CODES.O)
     public void turnOnHotspot() {
         if (!isLocationPermissionEnable()) {
@@ -139,8 +147,9 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         WifiManager manager = (WifiManager) getSystemService(WIFI_SERVICE);
 
         int wifiState = manager.getWifiState();
-        if ((wifiState == WifiManager.WIFI_STATE_ENABLING) || (wifiState == WifiManager.WIFI_STATE_ENABLED)) {
+        while ((wifiState == WifiManager.WIFI_STATE_ENABLING) || (wifiState == WifiManager.WIFI_STATE_ENABLED)) {
             manager.setWifiEnabled(false);
+            wifiState = manager.getWifiState();
         }
 
         if ((wifiState == WifiManager.WIFI_STATE_DISABLED)) {
@@ -185,10 +194,11 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             String line;
             while ((line=br.readLine())!=null){
                 String[] splitted=line.split(" +");
-                if (splitted !=null && splitted.length>=4){
+                if (splitted.length>=4){
                     String ip=splitted[0];
                     if (!ip.equalsIgnoreCase("ip")){
                         connectedIp.add(ip);
+                        Log.i("ABC",ip);
                     }
                 }
             }
@@ -244,7 +254,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             Object iConnMgr = iConnMgrField.get(connManager);
             Class<?> iConnMgrClass = Class.forName(iConnMgr.getClass().getName());
             Method stopTethering = iConnMgrClass.getMethod("stopTethering", int.class);
-            stopTethering.invoke(iConnMgr, 0);
+            stopTethering.invoke(iConnMgr, false);
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -257,6 +267,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     private void initWifiHotspotDisplay(){
         wifiDisplayView = findViewById(R.id.wifi_display);
         wifiStateView = findViewById(R.id.wifi_state);
+        ipListView = findViewById(R.id.ip_list);
         updateButton = findViewById(R.id.wifi_update);
         wifiSwitch = findViewById(R.id.wifi_switch);
 
@@ -267,23 +278,19 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         pauseButton.setOnClickListener(this);
         stopButton.setOnClickListener(this);
 
-        //权限动态申请
         if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(this, PERMISSIONS_STORAGE, 1);
-
         } else {
-//            initSD();
             initMediaPlayer();
         }
-
     }
 
     private void initMediaPlayer() {
         try {
-            File file = new File(Environment.getExternalStorageDirectory(),
-                    "huawei-8211-dream-it-possible.mp3");
-            mediaPlayer.setDataSource(file.getPath()); // 指定音频文件的路径
-            mediaPlayer.prepare(); // 让MediaPlayer进入到准备状态
+            File file = new File(Environment.getExternalStorageDirectory(), "huawei-8211-dream-it-possible.mp3");
+            mediaPlayer.setDataSource(file.getPath()); // set the audio file path
+            mediaPlayer.setLooping(true);
+            mediaPlayer.prepare();
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -293,8 +300,8 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     public void onClick(View v) {
         switch (v.getId()) {
             case R.id.button_play:
-                if (!mediaPlayer.isPlaying()) {
-                    mediaPlayer.start(); // 开始播放
+                if (!mediaPlayer.isPlaying() && isHotSpotEnabled()) {
+                    mediaPlayer.start(); // just when the hotspot has been opened,the audio can be played
                 }
                 break;
             case R.id.button_pause:
@@ -320,4 +327,13 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             mediaPlayer.release();
         }
     }
+
+    void ipListAndNumDisplay(){
+        ipListView.setText("Device Num:"+ getConnectedIP().size()+"\n");
+        for(int i=0;i<getConnectedIP().size();i++){
+            ipListView.append("IP:"+getConnectedIP().get(i)+"\n");
+        }
+    }
+
+
 }

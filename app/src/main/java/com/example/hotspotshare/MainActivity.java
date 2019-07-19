@@ -1,8 +1,11 @@
 package com.example.hotspotshare;
 import android.Manifest;
 import android.app.Activity;
+import android.app.ActivityManager;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.content.ServiceConnection;
 import android.content.pm.PackageManager;
 import android.media.MediaPlayer;
 import android.net.ConnectivityManager;
@@ -13,6 +16,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
+import android.os.IBinder;
 import android.os.Message;
 import android.telephony.TelephonyManager;
 import android.util.Log;
@@ -23,6 +27,7 @@ import android.widget.CompoundButton;
 import android.widget.ListView;
 import android.widget.Switch;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import androidx.annotation.RequiresApi;
 import androidx.appcompat.app.AppCompatActivity;
@@ -38,152 +43,49 @@ import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.List;
 
 public class MainActivity extends AppCompatActivity implements View.OnClickListener {
     TextView wifiDisplayView;
     TextView wifiStateView;
     Switch wifiSwitch;
-    Button updateButton;
-
-    public static int AP_STATE_DISABLING = 10;
-    public static int AP_STATE_DISABLED = 11;
-    public static int AP_STATE_ENABLING = 12;
-    public static int AP_STATE_ENABLED = 13;
-    public static int AP_STATE_FAILED = 14;
-    public static String SSID;
-    public static String preShareKey;
-    public boolean mobileEnableState = true;
-
 
     private Button playButton;
     private Button pauseButton;
     private Button stopButton;
     private TextView ipListView;
-
-
+    boolean isAllNecessaryPermissionEnabled = false;
     private MediaPlayer mediaPlayer = new MediaPlayer();
+    private HotspotService.HotspotBinder binder;
+    private HotspotService hotspotService;
+    boolean isServiceHaveBeenOpened = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         initWifiHotspotDisplay();
-        ipListAndNumDisplay();
-        wifiStateView.setText("HotspotState:Closed\n");
-        wifiDisplayView.setText("SSID:"+"ull"+"\n"+"PWD:"+"null");
+        requestAllNecessaryPermissions();
 
-        updateButton.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                if(isHotSpotEnabled()){
-                    wifiStateView.setText("HotspotState:Open\n");
-                    wifiDisplayView.setText("Ssid:"+SSID+"\n"+"Pwd:"+preShareKey);
-                }
-                else {
-                    wifiStateView.setText("HotspotState:Closed\n");
-                    wifiDisplayView.setText("Ssid:"+"null"+"\n"+"Pwd:"+"null");
-
-                }
-                ipListAndNumDisplay();
-                wifiSwitch.setChecked(isHotSpotEnabled());
-            }
-        });
+        initMediaPlayer();
 
         wifiSwitch.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
             @Override
             public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
-                if(isChecked){
-                    turnOnHotspot();
-                    enableMobileData(mobileEnableState);
-                    wifiStateView.setText("HotspotState:Open\n");
-                    wifiDisplayView.setText("Ssid:"+SSID+"\n"+"Pwd:" +preShareKey);
-                    ipListAndNumDisplay();
+
+                if(isChecked && isAllNecessaryPermissionEnabled) {
+                    isServiceHaveBeenOpened = true;
+                    Intent bindIntent = new Intent(MainActivity.this, HotspotService.class);
+                    bindService(bindIntent, serviceConnection, BIND_AUTO_CREATE);
                 }
-                else{
-                    turnOffHotspot();
+                else if(isServiceHaveBeenOpened) {
                     wifiStateView.setText("HotspotState:Closed\n");
                     wifiDisplayView.setText("Ssid:"+"null"+"\n"+"Pwd:"+"null");
+                    unbindService(serviceConnection);
+                    isServiceHaveBeenOpened = false;
                 }
             }
         });
-    }
-
-    public boolean isHotSpotEnabled() {
-        Method method = null;
-        int actualState = 0;
-        try {
-            WifiManager mWifiManager = (WifiManager) this.getSystemService(WIFI_SERVICE);
-            method = mWifiManager.getClass().getDeclaredMethod("getWifiApState");
-            method.setAccessible(true);
-
-            actualState = (Integer) method.invoke(mWifiManager, (Object[]) null);
-            if (actualState == AP_STATE_ENABLING || actualState == AP_STATE_ENABLED) {
-                return true;
-            }
-        } catch (IllegalArgumentException | NoSuchMethodException | IllegalAccessException | InvocationTargetException e) {
-            e.printStackTrace();
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-        return false;
-    }
-
-    private boolean isLocationPermissionEnable() {
-        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_COARSE_LOCATION}, 2);
-            return false;
-        }
-        return true;
-    }
-
-    private static WifiManager.LocalOnlyHotspotReservation mReservation;
-    private static boolean isHotspotEnabledState = false;
-
-    @RequiresApi(api = Build.VERSION_CODES.O)
-    public void turnOnHotspot() {
-        if (!isLocationPermissionEnable()) {
-            return;
-        }
-        WifiManager manager = (WifiManager) getSystemService(WIFI_SERVICE);
-
-        int wifiState = manager.getWifiState();
-        while ((wifiState == WifiManager.WIFI_STATE_ENABLING) || (wifiState == WifiManager.WIFI_STATE_ENABLED)) {
-            manager.setWifiEnabled(false);
-            wifiState = manager.getWifiState();
-        }
-
-        if ((wifiState == WifiManager.WIFI_STATE_DISABLED)) {
-            manager.startLocalOnlyHotspot(new WifiManager.LocalOnlyHotspotCallback() {
-
-                @Override
-                public void onStarted(WifiManager.LocalOnlyHotspotReservation reservation) {
-                    super.onStarted(reservation);
-                    mReservation = reservation;
-                    SSID = reservation.getWifiConfiguration().SSID;
-                    preShareKey = reservation.getWifiConfiguration().preSharedKey;
-                    isHotspotEnabledState = true;
-                }
-
-                @Override
-                public void onStopped() {
-                    super.onStopped();
-                    isHotspotEnabledState = false;
-                }
-
-                @Override
-                public void onFailed(int reason) {
-                    super.onFailed(reason);
-                    isHotspotEnabledState = false;
-                }
-            }, new Handler());
-        }
-    }
-
-    public void turnOffHotspot() {
-        if (isHotspotEnabledState == true && mReservation != null) {
-            mReservation.close();
-            isHotspotEnabledState = false;
-        }
     }
 
     public ArrayList<String> getConnectedIP(){
@@ -198,7 +100,6 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                     String ip=splitted[0];
                     if (!ip.equalsIgnoreCase("ip")){
                         connectedIp.add(ip);
-                        Log.i("ABC",ip);
                     }
                 }
             }
@@ -210,10 +111,6 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         return connectedIp;
     }
 
-    /**
-     * open the mobile network
-     * @param enabled  open or closed
-     */
     public void setMobileDataState(boolean enabled) {
         TelephonyManager telephonyService = (TelephonyManager) getSystemService(Context.TELEPHONY_SERVICE);
         try {
@@ -226,9 +123,6 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         }
     }
 
-    /**
-     * @param on Boolean status
-     */
     public boolean enableMobileData(boolean on) {
         try {
             ConnectivityManager mConnectivityManager =
@@ -260,15 +154,10 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         }
     }
 
-    private static String[] PERMISSIONS_STORAGE = {
-            Manifest.permission.READ_EXTERNAL_STORAGE,
-            Manifest.permission.WRITE_EXTERNAL_STORAGE};
-
     private void initWifiHotspotDisplay(){
         wifiDisplayView = findViewById(R.id.wifi_display);
         wifiStateView = findViewById(R.id.wifi_state);
         ipListView = findViewById(R.id.ip_list);
-        updateButton = findViewById(R.id.wifi_update);
         wifiSwitch = findViewById(R.id.wifi_switch);
 
         playButton =  findViewById(R.id.button_play);
@@ -277,12 +166,6 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         playButton.setOnClickListener(this);
         pauseButton.setOnClickListener(this);
         stopButton.setOnClickListener(this);
-
-        if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(this, PERMISSIONS_STORAGE, 1);
-        } else {
-            initMediaPlayer();
-        }
     }
 
     private void initMediaPlayer() {
@@ -300,7 +183,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     public void onClick(View v) {
         switch (v.getId()) {
             case R.id.button_play:
-                if (!mediaPlayer.isPlaying() && isHotSpotEnabled()) {
+                if (!mediaPlayer.isPlaying()) {
                     mediaPlayer.start(); // just when the hotspot has been opened,the audio can be played
                 }
                 break;
@@ -319,6 +202,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                 break;
         }
     }
+
     @Override
     protected void onDestroy() {
         super.onDestroy();
@@ -335,5 +219,108 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         }
     }
 
+    public ServiceConnection serviceConnection = new ServiceConnection() {
+        @Override
+        public void onServiceConnected(ComponentName name, IBinder service) {
+            binder = (HotspotService.HotspotBinder)service;
+//            binder.setData("MainActivity+");
+            hotspotService = binder.getService();
 
+            hotspotService.setOnDatCallback(new HotspotService.OnDataCallback() {
+                @Override
+                public void onDataChange(final HotspotService.HotspotStateInfo hotspotStateInfo) {
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            wifiStateView.setText("HotspotState:Open\n");
+                            wifiDisplayView.setText("Ssid:"+hotspotStateInfo.SSID+"\n"+"Pwd:"+hotspotStateInfo.preShareKey);
+                            ipListAndNumDisplay();
+                        }
+                    });
+                }
+            });
+        }
+
+        //        ipListAndNumDisplay();
+
+//        updateButton.setOnClickListener(new View.OnClickListener() {
+//            @Override
+//            public void onClick(View view) {
+//                if(isHotSpotEnabled()){
+//                    wifiStateView.setText("HotspotState:Open\n");
+//                    wifiDisplayView.setText("Ssid:"+SSID+"\n"+"Pwd:"+preShareKey);
+//                }
+//                else {
+//                    wifiStateView.setText("HotspotState:Closed\n");
+//                    wifiDisplayView.setText("Ssid:"+"null"+"\n"+"Pwd:"+"null");
+//
+//                }
+//                ipListAndNumDisplay();
+//                wifiSwitch.setChecked(isHotSpotEnabled());
+//            }
+//        });
+
+        @Override
+        public void onServiceDisconnected(ComponentName name) {
+           hotspotService = null;
+        }
+    };
+
+    private void requestAllNecessaryPermissions() {
+        List<String> permissionList = new ArrayList<>();
+
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION)
+                != PackageManager.PERMISSION_GRANTED) {
+            permissionList.add(Manifest.permission.ACCESS_COARSE_LOCATION);
+        }
+
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                != PackageManager.PERMISSION_GRANTED) {
+            permissionList.add(Manifest.permission.WRITE_EXTERNAL_STORAGE);
+        }
+
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE)
+                != PackageManager.PERMISSION_GRANTED) {
+            permissionList.add(Manifest.permission.READ_EXTERNAL_STORAGE);
+        }
+
+        if (!permissionList.isEmpty()) {
+            ActivityCompat.requestPermissions(this, permissionList.toArray(new String[permissionList.size()]), 1002);
+        } else {
+            isAllNecessaryPermissionEnabled = true;
+            Toast.makeText(this, "多个权限你都有了，不用再次申请", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        switch (requestCode) {
+            case 1002:
+                if (grantResults.length > 0) {
+                    for (int i = 0; i < grantResults.length; i++) {
+                        if (grantResults[i] == PackageManager.PERMISSION_DENIED){
+                            Toast.makeText(MainActivity.this, permissions[i] + "权限被拒绝了", Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+                    }
+                    isAllNecessaryPermissionEnabled = true;
+                }
+                break;
+        }
+    }
+
+    public static boolean isServiceRunning(Context context, String ServiceName) {
+        if (("").equals(ServiceName) || ServiceName == null)
+            return false;
+        ActivityManager myManager = (ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
+        ArrayList<ActivityManager.RunningServiceInfo> runningService = (ArrayList<ActivityManager.RunningServiceInfo>) myManager
+                .getRunningServices(30);
+        for (int i = 0; i < runningService.size(); i++) {
+            if (runningService.get(i).service.getClassName().toString().equals(ServiceName)) {
+                return true;
+            }
+        }
+        return false;
+    }
 }

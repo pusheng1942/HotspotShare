@@ -31,31 +31,17 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
-    <Button
-        android:id="@+id/wifi_update"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="155dp"
-        android:layout_marginEnd="138dp"
-        android:layout_marginBottom="40dp"
-        android:text="Update"
-        android:textSize="25sp"
-        app:layout_constraintBottom_toTopOf="@+id/button_pause"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent" />
-
     <Switch
         android:id="@+id/wifi_switch"
         android:layout_width="wrap_content"
         android:layout_height="40dp"
-        android:layout_marginBottom="40dp"
+        android:layout_marginBottom="109dp"
         android:gravity="center"
         android:switchMinWidth="50dp"
         android:text="WifiState"
-        android:textSize="16sp"
-        app:layout_constraintBottom_toTopOf="@+id/wifi_update"
+        android:textSize="20sp"
+        app:layout_constraintBottom_toTopOf="@+id/button_pause"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHorizontal_bias="0.533"
         app:layout_constraintStart_toStartOf="parent" />
 
     <Button

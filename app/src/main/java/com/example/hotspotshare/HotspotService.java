@@ -1,38 +1,25 @@
 package com.example.hotspotshare;
 
-import android.Manifest;
-import android.app.Activity;
+
 import android.app.Service;
 import android.content.Intent;
-import android.content.pm.PackageManager;
 import android.net.wifi.WifiManager;
 import android.os.Binder;
-import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
 import android.util.Log;
-
-import androidx.annotation.RequiresApi;
-import androidx.core.app.ActivityCompat;
-
-import java.io.BufferedReader;
-import java.io.FileNotFoundException;
-import java.io.FileReader;
-import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-import java.util.ArrayList;
 
 
 public class HotspotService extends Service {
-    private String message;
     private IBinder binder = new HotspotBinder();
     private HotspotService.ServiceThread hotspotService;
-    private Thread thread;
+    Thread thread;
     private HotspotStateInfo hotspotStateInfo = new HotspotStateInfo();
 
-    private static int AP_STATE_ENABLING = 12;
-    private static int AP_STATE_ENABLED = 13;
+    private static final int AP_STATE_ENABLING = 12;
+    private static final int AP_STATE_ENABLED = 13;
 
     public static String hotspotSSID;
     public static String hotspotPreShareKey;
@@ -40,10 +27,15 @@ public class HotspotService extends Service {
     public static final String TAG = "service";
 
     @Override
+    public void onCreate(){
+        super.onCreate();
+        Log.d(TAG, "onCreate() executed");
+    }
+
+    @Override
     public IBinder onBind(Intent intent) {
         hotspotService = new ServiceThread();
         thread =  new Thread(hotspotService);
-        //open the hotspot
         turnOnHotspot();
         thread.start();
         return binder;
@@ -53,8 +45,7 @@ public class HotspotService extends Service {
     public void onDestroy(){
         super.onDestroy();
         hotspotService.flag = false;
-        turnOffHotspot();  //close the hotspot
-        Log.i(TAG,"onDestroy");
+        turnOffHotspot();
     }
 
 
@@ -70,7 +61,6 @@ public class HotspotService extends Service {
         @Override
         public void run(){
             Log.i(TAG,"thread is running！");
-            int i =1;
             while(flag){
                 if(mOnDataCallback!=null){
                     hotspotStateInfo.SSID =  hotspotSSID;
@@ -79,9 +69,8 @@ public class HotspotService extends Service {
 
                     mOnDataCallback.onDataChange(hotspotStateInfo);  //Transport the hotspot state info
                 }
-                i++;
                 try{
-                    Thread.sleep(100);
+                    Thread.sleep(50);
                 }catch (InterruptedException e){
                     e.printStackTrace();
                 }
@@ -139,10 +128,9 @@ public class HotspotService extends Service {
         int wifiState = manager.getWifiState();
         if ((wifiState == WifiManager.WIFI_STATE_ENABLING) || (wifiState == WifiManager.WIFI_STATE_ENABLED)) {
             manager.setWifiEnabled(false);
-            wifiState = manager.getWifiState();
         }
-
-        if ((wifiState == WifiManager.WIFI_STATE_DISABLED)) {
+        System.out.println(wifiState);
+        if ((wifiState == WifiManager.WIFI_STATE_DISABLED || wifiState == WifiManager.WIFI_STATE_DISABLING )) {
             manager.startLocalOnlyHotspot(new WifiManager.LocalOnlyHotspotCallback() {
 
                 @Override
@@ -152,6 +140,7 @@ public class HotspotService extends Service {
                     hotspotSSID = reservation.getWifiConfiguration().SSID;
                     hotspotPreShareKey = reservation.getWifiConfiguration().preSharedKey;
                     isHotspotEnabledState = true;
+//                    Log.i("HotspotService","wifi closed");
                 }
 
                 @Override
@@ -176,3 +165,5 @@ public class HotspotService extends Service {
         }
     }
 }
+
+
